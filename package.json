@@ -1,0 +1,16 @@
+{
+  "name": "stickerbot",
+  "version": "1.0.0",
+  "description": "Sticker Bot for Whatsapp",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Javier C.",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}
