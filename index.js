@@ -1,2 +1,2 @@
 // Load the initial basic version of the bot
-require('./src/sb009_mandarStickerV2');
+require('./src/sb013_timerDeBusqueda');
