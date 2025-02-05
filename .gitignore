@@ -6,3 +6,6 @@ sessions/
 
 media/stickers/*
 !media/stickers/.gitkeep
+
+media/stickers_categorias/*
+!media/stickers_categorias/.gitkeep
