@@ -1,5 +1,5 @@
-// sb020_comandoStickerStandard.js
-// ahora quiero normalizar los acentos de las palabras clave antes de hacer la busqueda. 
+// sb021_comandoCategorias.js
+// ahora quiero que se puedan pedir categorias 
 
 const qrcode = require('qrcode-terminal');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
@@ -15,6 +15,11 @@ const client = new Client({
 let stickersData = {};
 // Variable para guardar las solicitudes 
 const solicitudesStickers = new Map();
+// Mapa para almacenar usuarios que han solicitado la lista de categorías
+const solicitudesCategorias = new Map();
+// Mapa para almacenar usuarios que han solicitado stickers dentro de una categoría
+const solicitudesStickersPorCategoria = new Map();
+
 
 // Generar QR para escanear
 client.on('qr', (qr) => {
@@ -38,8 +43,11 @@ client.on('message', async (message) => {
         const palabrasClave = comando.replace('/stickers', '').trim();
         if (!palabrasClave) return message.reply('Debes proporcionar al menos una palabra clave después de /stickers.');
         return manejarQuieroStickers(message, palabrasClave);
-    }       
-    if (/^\d+$/.test(comando)) return manejarSeleccionNumerica(message, parseInt(comando, 10));
+    }
+    if (comando === '/categorias') return manejarCategorias(message);     
+    if (/^\d+$/.test(comando)) {
+        return manejarSeleccionNumericaGeneral(message, parseInt(comando, 10));
+    }
 });
 
 // Responde a los mensajes del host
@@ -52,8 +60,11 @@ client.on('message_create', async (message) => {
             const palabrasClave = comando.replace('/stickers', '').trim();
             if (!palabrasClave) return message.reply('Debes proporcionar al menos una palabra clave después de /stickers.');
             return manejarQuieroStickers(message, palabrasClave);
-        }                
-        if (/^\d+$/.test(comando)) return manejarSeleccionNumerica(message, parseInt(comando, 10));
+        }
+        if (comando === '/categorias') return manejarCategorias(message);     
+        if (/^\d+$/.test(comando)) {
+            return manejarSeleccionNumericaGeneral(message, parseInt(comando, 10));
+        }
     }
 });
 
@@ -375,6 +386,235 @@ function manejarSeleccionNumerica(message, numero) {
         setTimeout(() => enviarSticker(stickerSeleccionado, message), 500);
     } 
 }
+
+
+/**
+ * Obtiene la lista de categorías disponibles en el directorio `stickers_categorias/`.
+ * 
+ * 🔹 **Entrada:** No recibe parámetros.
+ * 🔹 **Salida:** *(Array de strings)* Lista de nombres de las categorías encontradas.
+ * 
+ * 📌 **Descripción:**
+ * - Verifica la existencia del directorio `stickers_categorias/`.
+ * - Obtiene los nombres de las carpetas dentro de este directorio.
+ * - Retorna un array con los nombres de las categorías encontradas.
+ * - Si el directorio no existe o está vacío, retorna un array vacío.
+ */
+function listarCategorias() {
+    const categoriasPath = path.join(__dirname, '..', 'media', 'stickers_categorias');
+    if (!fs.existsSync(categoriasPath)) {
+        console.log("❌ Directorio no encontrado:", categoriasPath);
+        return [];
+    }
+
+    const categorias = fs.readdirSync(categoriasPath).filter(nombre => 
+        fs.statSync(path.join(categoriasPath, nombre)).isDirectory()
+    );
+
+    console.log("📂 Categorías encontradas:", categorias);
+    return categorias;
+}
+
+
+
+/**
+ * Maneja el comando `/categorias`, enviando la lista de categorías disponibles al usuario.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
+ * 
+ * 🔹 **Salida:** No retorna valores, pero responde al usuario con una lista de categorías.
+ * 
+ * 📌 **Descripción:**
+ * - Llama a `listarCategorias()` para obtener la lista de categorías disponibles.
+ * - Si hay categorías, las envía numeradas al usuario.
+ * - Guarda la solicitud en `solicitudesCategorias` para rastrear la selección del usuario.
+ * - Configura un temporizador de 60 segundos para eliminar la solicitud si el usuario no responde.
+ */
+function manejarCategorias(message) {
+    const categorias = listarCategorias();
+    if (categorias.length === 0) {
+        return message.reply('No hay categorías disponibles en este momento.');
+    }
+
+    const listaEnumerada = categorias.map((cat, index) => `${index + 1}. ${cat}`).join('\n');
+    message.reply(`Categorías disponibles:\n\n${listaEnumerada}\n\n*Tienes 60 segundos para elegir una categoría, si no deberás empezar de nuevo.*`);
+
+    solicitudesCategorias.set(message.from, { categorias });
+
+    setTimeout(() => {
+        solicitudesCategorias.delete(message.from);
+    }, 60000);
+}
+
+
+
+/**
+ * Maneja la selección de números según el estado del usuario.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
+ *   - `numero` *(number)*: Número enviado por el usuario.
+ * 
+ * 🔹 **Salida:** No retorna valores, pero ejecuta la función correspondiente según el contexto.
+ * 
+ * 📌 **Descripción:**
+ * - Verifica si el usuario está en la selección de categorías y maneja la selección de categoría.
+ * - Verifica si el usuario está en la selección de stickers dentro de una categoría y maneja la selección de stickers.
+ * - Si el usuario no está en ninguna de estas selecciones, maneja la selección de stickers estándar (`/stickers`).
+ */
+function manejarSeleccionNumericaGeneral(message, numero) {
+    if (solicitudesCategorias.has(message.from)) {
+        return manejarSeleccionCategoria(message, numero);
+    }
+
+    if (solicitudesStickersPorCategoria.has(message.from)) {
+        return manejarSeleccionStickerPorCategoria(message, numero);
+    }
+
+    return manejarSeleccionNumerica(message, numero);
+}
+
+
+
+
+/**
+ * Obtiene la lista de stickers dentro de una categoría seleccionada.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `categoria` *(string)*: Nombre de la categoría seleccionada.
+ * 
+ * 🔹 **Salida:** *(Array de strings)* Lista de nombres de stickers sin la extensión `.webp`.
+ * 
+ * 📌 **Descripción:**
+ * - Verifica la existencia del directorio de la categoría.
+ * - Obtiene los nombres de los archivos dentro de la carpeta.
+ * - Filtra solo los archivos con extensión `.webp` y elimina la extensión antes de retornarlos.
+ * - Si la categoría no existe o no tiene stickers, retorna un array vacío.
+ */
+function listarStickersPorCategoria(categoria) {
+    const categoriaPath = path.join(__dirname, '..', 'media', 'stickers_categorias', categoria);
+    if (!fs.existsSync(categoriaPath)) {
+        console.log("❌ Directorio no encontrado:", categoriaPath);
+        return [];
+    }
+
+    return fs.readdirSync(categoriaPath)
+        .filter(nombre => nombre.endsWith('.webp'))
+        .map(nombre => nombre.replace('.webp', ''));
+}
+
+
+
+
+/**
+ * Maneja la selección de una categoría por parte del usuario.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
+ *   - `numero` *(number)*: Número enviado por el usuario para seleccionar una categoría.
+ * 
+ * 🔹 **Salida:** No retorna valores, pero responde al usuario con la lista de stickers en la categoría seleccionada.
+ * 
+ * 📌 **Descripción:**
+ * - Verifica si el usuario tiene una solicitud activa en `solicitudesCategorias`.
+ * - Obtiene la categoría correspondiente según el número enviado.
+ * - Llama a `listarStickersPorCategoria()` para obtener los stickers en la categoría seleccionada.
+ * - Si hay stickers, envía la lista numerada al usuario y guarda la solicitud en `solicitudesStickersPorCategoria`.
+ * - Si no hay stickers en la categoría, informa al usuario y elimina su solicitud.
+ * - Configura un temporizador de 60 segundos para eliminar la solicitud si el usuario no responde.
+ */
+function manejarSeleccionCategoria(message, numero) {
+    const solicitud = solicitudesCategorias.get(message.from);
+    if (!solicitud || numero < 1 || numero > solicitud.categorias.length) return;
+
+    const categoriaSeleccionada = solicitud.categorias[numero - 1];
+    const stickers = listarStickersPorCategoria(categoriaSeleccionada);
+
+    solicitudesCategorias.delete(message.from);
+
+    if (stickers.length === 0) {
+        return message.reply(`La categoría *${categoriaSeleccionada}* no tiene stickers disponibles.`);
+    }
+
+    const listaEnumerada = stickers.map((sticker, index) => `${index + 1}. ${sticker}`).join('\n');
+    message.reply(`Stickers en *${categoriaSeleccionada}*:\n\n${listaEnumerada}\n\n*Tienes 60 segundos para pedir los stickers de la lista, si no deberás empezar de nuevo.*`);
+
+    solicitudesStickersPorCategoria.set(message.from, { categoria: categoriaSeleccionada, stickers });
+
+    setTimeout(() => {
+        solicitudesStickersPorCategoria.delete(message.from);
+    }, 60000);
+}
+
+
+
+
+/**
+ * Maneja la selección de un sticker dentro de una categoría por parte del usuario.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
+ *   - `numero` *(number)*: Número enviado por el usuario para seleccionar un sticker.
+ * 
+ * 🔹 **Salida:** No retorna valores, pero envía el sticker seleccionado al usuario.
+ * 
+ * 📌 **Descripción:**
+ * - Verifica si el usuario tiene una solicitud activa en `solicitudesStickersPorCategoria`.
+ * - Obtiene el sticker correspondiente según el número enviado.
+ * - Si el número es válido, llama a `enviarSticker()` para enviarlo.
+ * - La solicitud no se elimina inmediatamente, permitiendo que el usuario pida más stickers dentro del tiempo límite.
+ */
+function manejarSeleccionStickerPorCategoria(message, numero) {
+    const solicitud = solicitudesStickersPorCategoria.get(message.from);
+    if (!solicitud || numero < 1 || numero > solicitud.stickers.length) return;
+
+    const stickerSeleccionado = solicitud.stickers[numero - 1] + '.webp';
+    enviarStickerDesdeCategoria(stickerSeleccionado, solicitud.categoria, message);
+}
+
+
+
+
+
+
+
+/**
+ * Envía un sticker desde una categoría específica al usuario en WhatsApp.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `stickerFile` *(string)*: Nombre del archivo del sticker (incluyendo su extensión).
+ *   - `categoria` *(string)*: Nombre de la categoría en la que se encuentra el sticker.
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp al cual se responderá con el sticker.
+ * 
+ * 🔹 **Salida:** 
+ *   - No retorna valores, pero envía un sticker como respuesta al mensaje del usuario.
+ * 
+ * 📌 **Descripción:**
+ * - Construye la ruta del sticker en `media/stickers_categorias/{categoria}/`.
+ * - Verifica si el archivo del sticker existe antes de enviarlo.
+ * - Convierte el sticker en base64 y lo envía como `MessageMedia`.
+ * - Maneja posibles errores y notifica al usuario en caso de fallo.
+ */
+function enviarStickerDesdeCategoria(stickerFile, categoria, message) {
+    const stickerPath = path.join(__dirname, '..', 'media', 'stickers_categorias', categoria, stickerFile);
+
+    if (!fs.existsSync(stickerPath)) {
+        console.error(`❌ Sticker no encontrado: ${stickerPath}`);
+        message.reply(`No se encontró el sticker: ${stickerFile} en la categoría ${categoria}.`);
+        return;
+    }
+
+    try {
+        const stickerData = fs.readFileSync(stickerPath).toString('base64');
+        const sticker = new MessageMedia('image/webp', stickerData);
+        message.reply(sticker, undefined, { sendMediaAsSticker: true });
+    } catch (error) {
+        console.error(`⚠ Error al enviar el sticker desde la categoría ${categoria}: ${stickerFile}`, error);
+        message.reply(`Hubo un error al enviar el sticker: ${stickerFile}.`);
+    }
+}
+
 
 
 // Iniciar cliente
