@@ -9,3 +9,6 @@ media/stickers/*
 
 media/stickers_categorias/*
 !media/stickers_categorias/.gitkeep
+
+media/audios_categorias/*
+!media/audios_categorias/.gitkeep
