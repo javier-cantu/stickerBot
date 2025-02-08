@@ -1,7 +1,5 @@
-// sb023_ahoraAudios.js
-// ahora quiero que cada usuairo pueda pedir las categoria sy stickers
-// PERO por ahora si alguien pide una lista en un grupo cualquiera puede mandar un numero y seleccionar por el
-// Quiero que cada usuario tenga su propio thread o sesion, que solo a el le responda el bot. 
+// sb024_ahoraMainMenu.js
+// ahora quiero que haya un menu principal que se detone con /bot
 
 const qrcode = require('qrcode-terminal');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
@@ -13,20 +11,35 @@ const client = new Client({
     authStrategy: new LocalAuth(),
 });
 
-// Variable para guardar data de los stickers
-let stickersData = {};
-// Variable para guardar las solicitudes 
-const solicitudesStickers = new Map();
-// Mapa para almacenar usuarios que han solicitado la lista de categorías
+
+// ================================================
+// VARIABLES GENERALES
+// ================================================
+let stickersData = {}; // Almacena la data de stickers cargada desde JSON
+
+// ================================================
+// STICKERS
+// ================================================
+// Mapa para almacenar usuarios que han solicitado la lista de categorías de stickers
 const solicitudesCategorias = new Map();
 // Mapa para almacenar usuarios que han solicitado stickers dentro de una categoría
 const solicitudesStickersPorCategoria = new Map();
-// AUDIO
+// Mapa para rastrear solicitudes de stickers por palabras clave
+const solicitudesStickers = new Map();
+
+// ================================================
+// AUDIOS
+// ================================================
 // Mapa para almacenar usuarios que han solicitado la lista de categorías de audios
 const solicitudesAudiosCategorias = new Map();
 // Mapa para almacenar usuarios que han solicitado audios dentro de una categoría
 const solicitudesAudiosPorCategoria = new Map();
 
+// ================================================
+// MENÚ PRINCIPAL
+// ================================================
+// Mapa para almacenar usuarios que han abierto el menú principal con /bot
+const solicitudesMenuPrincipal = new Map();
 
 
 // Generar QR para escanear
@@ -48,6 +61,7 @@ client.on('message', async (message) => {
     const comando = message.body.toLowerCase().trim();
     if (comando === '!ping') return manejarPing(message);
     if (comando === '/audiosbot') return manejarAudiosBot(message);
+    if (comando === '/bot') return manejarBotMenu(message);
     if (comando.startsWith('/stickers')) {
         const palabrasClave = comando.replace('/stickers', '').trim();
         if (!palabrasClave) return message.reply('Debes proporcionar al menos una palabra clave después de /stickers.');
@@ -66,6 +80,7 @@ client.on('message_create', async (message) => {
         if (comando === '!ping') return manejarPing(message);
         if (comando === '!refresh') return manejarRefresh(message);
         if (comando === '/audiosbot') return manejarAudiosBot(message);
+        if (comando === '/bot') return manejarBotMenu(message);
         if (comando.startsWith('/stickers')) {
             const palabrasClave = comando.replace('/stickers', '').trim();
             if (!palabrasClave) return message.reply('Debes proporcionar al menos una palabra clave después de /stickers.');
@@ -278,6 +293,60 @@ function enviarSticker(stickerFile, message) {
 // ================================================
 // Funciones para los comandos:
 // ================================================
+
+
+/**
+ * Muestra el menú principal cuando el usuario envía /bot.
+ * 
+ * 🔹 **Entrada:** 
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
+ * 
+ * 🔹 **Salida:** No retorna valores, pero responde al usuario con el menú principal.
+ * 
+ * 📌 **Descripción:**
+ * - Envía un mensaje con las opciones numeradas.
+ * - Guarda la solicitud en `solicitudesMenuPrincipal` para rastrear la elección del usuario.
+ * - Configura un temporizador de 60 segundos para limpiar la solicitud si el usuario no responde.
+ */
+function manejarBotMenu(message) {
+    const key = `${message.chatId}-${message.from}`;
+
+    const menu = `*Menú Principal*\n\n` +
+                 `Hola, este es un mensaje automatizado por un bot.\n` +
+                 `Por favor selecciona alguna de las siguientes opciones:\n\n` +
+                 `1️⃣ Stickers por categoría\n` +
+                 `2️⃣ Audios por categoría\n\n` +
+                 `*Tienes 60 segundos para elegir una opción.*`;
+
+    message.reply(menu);
+
+    solicitudesMenuPrincipal.set(key, true);
+
+    setTimeout(() => {
+        solicitudesMenuPrincipal.delete(key);
+    }, 60000);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
  * Responde con "pong!" cuando se recibe el comando "!ping".
  * 
@@ -497,31 +566,55 @@ function manejarCategorias(message) {
 function manejarSeleccionNumericaGeneral(message, numero) {
     const key = `${message.chatId}-${message.from}`;
 
-    console.log(`Número recibido: ${numero} desde ${key}`);
+    console.log(`📩 Número recibido: ${numero} desde ${key}`);
 
+    // Verificar si el usuario está en el menú principal
+    if (solicitudesMenuPrincipal.has(key)) {
+        solicitudesMenuPrincipal.delete(key); // Eliminar la solicitud del menú
+
+        if (numero === 1) {
+            console.log(`🔹 Usuario eligió Stickers por categoría`);
+            return manejarCategorias(message);
+        }
+        
+        if (numero === 2) {
+            console.log(`🔹 Usuario eligió Audios por categoría`);
+            return manejarAudiosBot(message);
+        }
+
+        // Si el número no es válido, ignorarlo
+        console.log(`⚠ Número inválido en el menú: ${numero}`);
+        return;
+    }
+
+    // Verificar si el usuario está en la selección de categorías de stickers
     if (solicitudesCategorias.has(key)) {
-        console.log(`Redirigiendo a manejarSeleccionCategoria()`);
+        console.log(`🔹 Redirigiendo a manejarSeleccionCategoria()`);
         return manejarSeleccionCategoria(message, numero);
     }
 
+    // Verificar si el usuario está en la selección de stickers dentro de una categoría
     if (solicitudesStickersPorCategoria.has(key)) {
-        console.log(`Redirigiendo a manejarSeleccionStickerPorCategoria()`);
+        console.log(`🔹 Redirigiendo a manejarSeleccionStickerPorCategoria()`);
         return manejarSeleccionStickerPorCategoria(message, numero);
     }
 
+    // Verificar si el usuario está en la selección de categorías de audios
     if (solicitudesAudiosCategorias.has(key)) {
-        console.log(`Redirigiendo a manejarSeleccionCategoriaAudio()`);
+        console.log(`🔹 Redirigiendo a manejarSeleccionCategoriaAudio()`);
         return manejarSeleccionCategoriaAudio(message, numero);
     }
 
+    // Verificar si el usuario está en la selección de audios dentro de una categoría
     if (solicitudesAudiosPorCategoria.has(key)) {
-        console.log(`Redirigiendo a manejarSeleccionAudioPorCategoria()`);
+        console.log(`🔹 Redirigiendo a manejarSeleccionAudioPorCategoria()`);
         return manejarSeleccionAudioPorCategoria(message, numero);
     }
 
     console.log(`⚠ No se encontró ninguna solicitud activa para ${key}`);
     return manejarSeleccionNumerica(message, numero);
 }
+
 
 
 

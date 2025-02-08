@@ -1,7 +1,5 @@
-// sb023_ahoraAudios.js
-// ahora quiero que cada usuairo pueda pedir las categoria sy stickers
-// PERO por ahora si alguien pide una lista en un grupo cualquiera puede mandar un numero y seleccionar por el
-// Quiero que cada usuario tenga su propio thread o sesion, que solo a el le responda el bot. 
+// sb025_MainMenu_borrarEstadoPrevio.js
+// ahora quiero que se elimine el estado previo del mapeo al inicio de las funciones para que si alguien usa 2 comandos seguidos, solo se quede el map del segundo. 
 
 const qrcode = require('qrcode-terminal');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
@@ -13,20 +11,35 @@ const client = new Client({
     authStrategy: new LocalAuth(),
 });
 
-// Variable para guardar data de los stickers
-let stickersData = {};
-// Variable para guardar las solicitudes 
-const solicitudesStickers = new Map();
-// Mapa para almacenar usuarios que han solicitado la lista de categorías
+
+// ================================================
+// VARIABLES GENERALES
+// ================================================
+let stickersData = {}; // Almacena la data de stickers cargada desde JSON
+
+// ================================================
+// STICKERS
+// ================================================
+// Mapa para almacenar usuarios que han solicitado la lista de categorías de stickers
 const solicitudesCategorias = new Map();
 // Mapa para almacenar usuarios que han solicitado stickers dentro de una categoría
 const solicitudesStickersPorCategoria = new Map();
-// AUDIO
+// Mapa para rastrear solicitudes de stickers por palabras clave
+const solicitudesStickers = new Map();
+
+// ================================================
+// AUDIOS
+// ================================================
 // Mapa para almacenar usuarios que han solicitado la lista de categorías de audios
 const solicitudesAudiosCategorias = new Map();
 // Mapa para almacenar usuarios que han solicitado audios dentro de una categoría
 const solicitudesAudiosPorCategoria = new Map();
 
+// ================================================
+// MENÚ PRINCIPAL
+// ================================================
+// Mapa para almacenar usuarios que han abierto el menú principal con /bot
+const solicitudesMenuPrincipal = new Map();
 
 
 // Generar QR para escanear
@@ -48,6 +61,7 @@ client.on('message', async (message) => {
     const comando = message.body.toLowerCase().trim();
     if (comando === '!ping') return manejarPing(message);
     if (comando === '/audiosbot') return manejarAudiosBot(message);
+    if (comando === '/bot') return manejarBotMenu(message);
     if (comando.startsWith('/stickers')) {
         const palabrasClave = comando.replace('/stickers', '').trim();
         if (!palabrasClave) return message.reply('Debes proporcionar al menos una palabra clave después de /stickers.');
@@ -66,6 +80,7 @@ client.on('message_create', async (message) => {
         if (comando === '!ping') return manejarPing(message);
         if (comando === '!refresh') return manejarRefresh(message);
         if (comando === '/audiosbot') return manejarAudiosBot(message);
+        if (comando === '/bot') return manejarBotMenu(message);
         if (comando.startsWith('/stickers')) {
             const palabrasClave = comando.replace('/stickers', '').trim();
             if (!palabrasClave) return message.reply('Debes proporcionar al menos una palabra clave después de /stickers.');
@@ -135,10 +150,10 @@ client.on('message_create', async (message) => {
 /**
  * Carga el archivo JSON de stickers y lo almacena en la variable `stickersData`.
  * 
- * 🔹 **Entrada:** No recibe parámetros.
- * 🔹 **Salida:** No retorna valores, pero actualiza la variable global `stickersData`.
+ * **Entrada:** No recibe parámetros.
+ * **Salida:** No retorna valores, pero actualiza la variable global `stickersData`.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Lee el archivo `stickers.json` desde el directorio `media/stickers/`.
  * - Convierte su contenido en un objeto JSON y lo almacena en `stickersData`.
  * - Muestra en consola información sobre el tiempo de carga y los stickers cargados.
@@ -166,13 +181,13 @@ function cargarStickersData() {
 /**
  * Normaliza un texto eliminando acentos y diacríticos.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `texto` *(string)*: Texto que se desea normalizar.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - *(string)*: Texto en minúsculas sin acentos ni caracteres especiales.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Convierte el texto a su forma descompuesta (`NFD`).
  * - Usa `replace(/[\u0300-\u036f]/g, "")` para eliminar los caracteres diacríticos.
  * - Retorna el texto normalizado sin alterar su estructura.
@@ -188,13 +203,13 @@ function normalizarTexto(texto) {
 /**
  * Busca stickers que coincidan con las palabras clave proporcionadas, ignorando acentos.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `palabrasClave` *(string)*: Texto ingresado por el usuario con palabras clave separadas por espacios.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - *(Array de strings)*: Lista de nombres de archivos de stickers que coinciden con las palabras clave.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Convierte las palabras clave a minúsculas y las normaliza eliminando acentos.
  * - Filtra palabras excluidas (prefijadas con `!`) y palabras incluidas.
  * - Normaliza las etiquetas de los stickers antes de compararlas.
@@ -236,14 +251,14 @@ function buscarStickersPorPalabrasClave(palabrasClave) {
 /**
  * Envía un sticker específico al usuario en WhatsApp.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `stickerFile` *(string)*: Nombre del archivo del sticker (incluyendo su extensión).
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp al cual se responderá con el sticker.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - No retorna valores, pero envía un sticker como respuesta al mensaje del usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Construye la ruta absoluta del sticker en el directorio `media/stickers/`.
  * - Verifica si el archivo del sticker existe antes de intentar enviarlo.
  * - Si el archivo no existe, responde al usuario con un mensaje de error.
@@ -278,16 +293,70 @@ function enviarSticker(stickerFile, message) {
 // ================================================
 // Funciones para los comandos:
 // ================================================
+
+
+/**
+ * Muestra el menú principal cuando el usuario envía /bot.
+ * 
+ * **Entrada:** 
+ *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
+ * 
+ * **Salida:** No retorna valores, pero responde al usuario con el menú principal.
+ * 
+ * **Descripción:**
+ * - Envía un mensaje con las opciones numeradas.
+ * - Guarda la solicitud en `solicitudesMenuPrincipal` para rastrear la elección del usuario.
+ * - Configura un temporizador de 60 segundos para limpiar la solicitud si el usuario no responde.
+ */
+function manejarBotMenu(message) {
+    const key = `${message.chatId}-${message.from}`;
+
+    const menu = `*Menú Principal*\n\n` +
+                 `Hola, este es un mensaje automatizado por un bot.\n` +
+                 `Por favor selecciona alguna de las siguientes opciones:\n\n` +
+                 `1️⃣ Stickers por categoría\n` +
+                 `2️⃣ Audios por categoría\n\n` +
+                 `*Tienes 60 segundos para elegir una opción.*`;
+
+    message.reply(menu);
+
+    solicitudesMenuPrincipal.set(key, true);
+
+    setTimeout(() => {
+        solicitudesMenuPrincipal.delete(key);
+    }, 60000);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
  * Responde con "pong!" cuando se recibe el comando "!ping".
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp que contiene la información del usuario y el chat.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - No retorna valores, pero envía una respuesta de texto con "pong!" al usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Elimina cualquier selección avctia en `solicitudesStickers` para reiniciar la sesión del usuario.
  * - Responde al mensaje con el texto `"pong!"`, útil para verificar si el bot está en línea.
  * 
@@ -304,13 +373,13 @@ function manejarPing(message) {
 /**
  * Recarga el archivo JSON de stickers y elimina cualquier selección activa del usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp que contiene la información del usuario y el chat.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - No retorna valores, pero envía un mensaje de confirmación o error al usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Elimina cualquier selección activa en `solicitudesStickers`, asegurando que los usuarios no mantengan una selección obsoleta.
  * - Llama a la función `cargarStickersData()` para volver a leer y actualizar la data de stickers desde `stickers.json`.
  * - Si la recarga es exitosa, responde al usuario con `"Stickers recargados exitosamente."`.
@@ -338,14 +407,14 @@ function manejarRefresh(message) {
 /**
  * Busca stickers según palabras clave y permite al usuario seleccionar uno enviando un número.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp que contiene la información del usuario y el chat.
  *   - `comando` *(string)*: Texto del mensaje enviado por el usuario, incluyendo el comando y las palabras clave.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - No retorna valores, pero responde con una lista numerada de stickers encontrados y guarda la selección para permitir la elección posterior.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Elimina cualquier selección activa en `solicitudesStickers` antes de procesar el nuevo comando.
  * - Extrae las palabras clave eliminando el prefijo `"quiero stickers de"`.
  * - Si el usuario no proporciona palabras clave, responde con un mensaje de error.
@@ -385,14 +454,14 @@ function manejarQuieroStickers(message, comando) {
 /**
  * Envía un sticker basado en la selección numerada realizada por el usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp que contiene la información del usuario y el chat.
  *   - `numero` *(number)*: Número enviado por el usuario para seleccionar un sticker de la lista previamente mostrada.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - No retorna valores, pero envía el sticker seleccionado como respuesta al usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica si el usuario tiene una selección activa en `solicitudesStickers`.
  * - Si el usuario **no tiene una selección activa**, la función simplemente **ignora el mensaje** y no responde.
  * - Si el número enviado por el usuario está dentro del rango válido:
@@ -421,10 +490,10 @@ function manejarSeleccionNumerica(message, numero) {
 /**
  * Obtiene la lista de categorías disponibles en el directorio `stickers_categorias/`.
  * 
- * 🔹 **Entrada:** No recibe parámetros.
- * 🔹 **Salida:** *(Array de strings)* Lista de nombres de las categorías encontradas.
+ * **Entrada:** No recibe parámetros.
+ * **Salida:** *(Array de strings)* Lista de nombres de las categorías encontradas.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica la existencia del directorio `stickers_categorias/`.
  * - Obtiene los nombres de las carpetas dentro de este directorio.
  * - Retorna un array con los nombres de las categorías encontradas.
@@ -433,7 +502,7 @@ function manejarSeleccionNumerica(message, numero) {
 function listarCategorias() {
     const categoriasPath = path.join(__dirname, '..', 'media', 'stickers_categorias');
     if (!fs.existsSync(categoriasPath)) {
-        console.log("❌ Directorio no encontrado:", categoriasPath);
+        console.log("ERROR Directorio no encontrado:", categoriasPath);
         return [];
     }
 
@@ -450,18 +519,25 @@ function listarCategorias() {
 /**
  * Maneja el comando `/categorias`, enviando la lista de categorías disponibles al usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  * 
- * 🔹 **Salida:** No retorna valores, pero responde al usuario con una lista de categorías.
+ * **Salida:** No retorna valores, pero responde al usuario con una lista de categorías.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Llama a `listarCategorias()` para obtener la lista de categorías disponibles.
  * - Si hay categorías, las envía numeradas al usuario.
  * - Guarda la solicitud en `solicitudesCategorias` para rastrear la selección del usuario.
  * - Configura un temporizador de 60 segundos para eliminar la solicitud si el usuario no responde.
  */
 function manejarCategorias(message) {
+    const key = `${message.chatId}-${message.from}`;
+
+    // Limpiar cualquier solicitud previa de audios o stickers
+    solicitudesAudiosCategorias.delete(key);
+    solicitudesStickersPorCategoria.delete(key);
+
+    // Ahora, manejar normalmente la solicitud de categorías
     const categorias = listarCategorias();
     if (categorias.length === 0) {
         return message.reply('No hay categorías disponibles en este momento.');
@@ -470,10 +546,12 @@ function manejarCategorias(message) {
     const listaEnumerada = categorias.map((cat, index) => `${index + 1}. ${cat}`).join('\n');
     message.reply(`Categorías disponibles:\n\n${listaEnumerada}\n\n*Tienes 60 segundos para elegir una categoría, si no deberás empezar de nuevo.*`);
 
-    solicitudesCategorias.set(`${message.chatId}-${message.from}`, { categorias });
+    // Registrar la nueva solicitud del usuario
+    solicitudesCategorias.set(key, { categorias });
 
+    // Borrar la solicitud después de 60 segundos
     setTimeout(() => {
-        solicitudesCategorias.delete(`${message.chatId}-${message.from}`);
+        solicitudesCategorias.delete(key);
     }, 60000);
 }
 
@@ -483,13 +561,13 @@ function manejarCategorias(message) {
 /**
  * Maneja la selección de números según el estado del usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  *   - `numero` *(number)*: Número enviado por el usuario.
  * 
- * 🔹 **Salida:** No retorna valores, pero ejecuta la función correspondiente según el contexto.
+ * **Salida:** No retorna valores, pero ejecuta la función correspondiente según el contexto.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica si el usuario está en la selección de categorías y maneja la selección de categoría.
  * - Verifica si el usuario está en la selección de stickers dentro de una categoría y maneja la selección de stickers.
  * - Si el usuario no está en ninguna de estas selecciones, maneja la selección de stickers estándar (`/stickers`).
@@ -499,21 +577,44 @@ function manejarSeleccionNumericaGeneral(message, numero) {
 
     console.log(`Número recibido: ${numero} desde ${key}`);
 
+    // Verificar si el usuario está en el menú principal
+    if (solicitudesMenuPrincipal.has(key)) {
+        solicitudesMenuPrincipal.delete(key); // Eliminar la solicitud del menú
+
+        if (numero === 1) {
+            console.log(`Usuario eligió Stickers por categoría`);
+            return manejarCategorias(message);
+        }
+        
+        if (numero === 2) {
+            console.log(`Usuario eligió Audios por categoría`);
+            return manejarAudiosBot(message);
+        }
+
+        // Si el número no es válido, ignorarlo
+        console.log(`⚠ Número inválido en el menú: ${numero}`);
+        return;
+    }
+
+    // Verificar si el usuario está en la selección de categorías de stickers
     if (solicitudesCategorias.has(key)) {
         console.log(`Redirigiendo a manejarSeleccionCategoria()`);
         return manejarSeleccionCategoria(message, numero);
     }
 
+    // Verificar si el usuario está en la selección de stickers dentro de una categoría
     if (solicitudesStickersPorCategoria.has(key)) {
         console.log(`Redirigiendo a manejarSeleccionStickerPorCategoria()`);
         return manejarSeleccionStickerPorCategoria(message, numero);
     }
 
+    // Verificar si el usuario está en la selección de categorías de audios
     if (solicitudesAudiosCategorias.has(key)) {
         console.log(`Redirigiendo a manejarSeleccionCategoriaAudio()`);
         return manejarSeleccionCategoriaAudio(message, numero);
     }
 
+    // Verificar si el usuario está en la selección de audios dentro de una categoría
     if (solicitudesAudiosPorCategoria.has(key)) {
         console.log(`Redirigiendo a manejarSeleccionAudioPorCategoria()`);
         return manejarSeleccionAudioPorCategoria(message, numero);
@@ -528,15 +629,16 @@ function manejarSeleccionNumericaGeneral(message, numero) {
 
 
 
+
 /**
  * Obtiene la lista de stickers dentro de una categoría seleccionada.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `categoria` *(string)*: Nombre de la categoría seleccionada.
  * 
- * 🔹 **Salida:** *(Array de strings)* Lista de nombres de stickers sin la extensión `.webp`.
+ * **Salida:** *(Array de strings)* Lista de nombres de stickers sin la extensión `.webp`.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica la existencia del directorio de la categoría.
  * - Obtiene los nombres de los archivos dentro de la carpeta.
  * - Filtra solo los archivos con extensión `.webp` y elimina la extensión antes de retornarlos.
@@ -545,7 +647,7 @@ function manejarSeleccionNumericaGeneral(message, numero) {
 function listarStickersPorCategoria(categoria) {
     const categoriaPath = path.join(__dirname, '..', 'media', 'stickers_categorias', categoria);
     if (!fs.existsSync(categoriaPath)) {
-        console.log("❌ Directorio no encontrado:", categoriaPath);
+        console.log("ERROR Directorio no encontrado:", categoriaPath);
         return [];
     }
 
@@ -560,13 +662,13 @@ function listarStickersPorCategoria(categoria) {
 /**
  * Maneja la selección de una categoría por parte del usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  *   - `numero` *(number)*: Número enviado por el usuario para seleccionar una categoría.
  * 
- * 🔹 **Salida:** No retorna valores, pero responde al usuario con la lista de stickers en la categoría seleccionada.
+ * **Salida:** No retorna valores, pero responde al usuario con la lista de stickers en la categoría seleccionada.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica si el usuario tiene una solicitud activa en `solicitudesCategorias`.
  * - Obtiene la categoría correspondiente según el número enviado.
  * - Llama a `listarStickersPorCategoria()` para obtener los stickers en la categoría seleccionada.
@@ -605,13 +707,13 @@ function manejarSeleccionCategoria(message, numero) {
 /**
  * Maneja la selección de un sticker dentro de una categoría por parte del usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  *   - `numero` *(number)*: Número enviado por el usuario para seleccionar un sticker.
  * 
- * 🔹 **Salida:** No retorna valores, pero envía el sticker seleccionado al usuario.
+ * **Salida:** No retorna valores, pero envía el sticker seleccionado al usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica si el usuario tiene una solicitud activa en `solicitudesStickersPorCategoria`.
  * - Obtiene el sticker correspondiente según el número enviado.
  * - Si el número es válido, llama a `enviarSticker()` para enviarlo.
@@ -632,15 +734,15 @@ function manejarSeleccionStickerPorCategoria(message, numero) {
 /**
  * Envía un sticker desde una categoría específica al usuario en WhatsApp.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `stickerFile` *(string)*: Nombre del archivo del sticker (incluyendo su extensión).
  *   - `categoria` *(string)*: Nombre de la categoría en la que se encuentra el sticker.
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp al cual se responderá con el sticker.
  * 
- * 🔹 **Salida:** 
+ * **Salida:** 
  *   - No retorna valores, pero envía un sticker como respuesta al mensaje del usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Construye la ruta del sticker en `media/stickers_categorias/{categoria}/`.
  * - Verifica si el archivo del sticker existe antes de enviarlo.
  * - Convierte el sticker en base64 y lo envía como `MessageMedia`.
@@ -650,7 +752,7 @@ function enviarStickerDesdeCategoria(stickerFile, categoria, message) {
     const stickerPath = path.join(__dirname, '..', 'media', 'stickers_categorias', categoria, stickerFile);
 
     if (!fs.existsSync(stickerPath)) {
-        console.error(`❌ Sticker no encontrado: ${stickerPath}`);
+        console.error(`ERROR Sticker no encontrado: ${stickerPath}`);
         message.reply(`No se encontró el sticker: ${stickerFile} en la categoría ${categoria}.`);
         return;
     }
@@ -675,10 +777,10 @@ AUDIOS
 /**
  * Obtiene la lista de categorías disponibles en el directorio `audios_categorias/`.
  * 
- * 🔹 **Entrada:** No recibe parámetros.
- * 🔹 **Salida:** *(Array de strings)* Lista de nombres de las categorías encontradas.
+ * **Entrada:** No recibe parámetros.
+ * **Salida:** *(Array de strings)* Lista de nombres de las categorías encontradas.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica la existencia del directorio `audios_categorias/`.
  * - Obtiene los nombres de las carpetas dentro de este directorio.
  * - Retorna un array con los nombres de las categorías encontradas.
@@ -698,18 +800,25 @@ function listarCategoriasAudios() {
 /**
  * Maneja el comando `/audiosbot`, enviando la lista de categorías de audios disponibles.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  * 
- * 🔹 **Salida:** No retorna valores, pero responde al usuario con una lista de categorías de audios.
+ * **Salida:** No retorna valores, pero responde al usuario con una lista de categorías de audios.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Llama a `listarCategoriasAudios()` para obtener la lista de categorías disponibles.
  * - Si hay categorías, las envía numeradas al usuario.
  * - Guarda la solicitud en `solicitudesAudiosCategorias` para rastrear la selección del usuario.
  * - Configura un temporizador de 60 segundos para eliminar la solicitud si el usuario no responde.
  */
 function manejarAudiosBot(message) {
+    const key = `${message.chatId}-${message.from}`;
+
+    // Limpiar cualquier solicitud previa de categorías o stickers
+    solicitudesCategorias.delete(key);
+    solicitudesStickersPorCategoria.delete(key);
+
+    // Ahora, manejar normalmente la solicitud de audios
     const categorias = listarCategoriasAudios();
     if (categorias.length === 0) {
         return message.reply('No hay categorías de audios disponibles en este momento.');
@@ -718,9 +827,10 @@ function manejarAudiosBot(message) {
     const listaEnumerada = categorias.map((cat, index) => `${index + 1}. ${cat}`).join('\n');
     message.reply(`Categorías de audios disponibles:\n\n${listaEnumerada}\n\n*Tienes 60 segundos para elegir una categoría, si no deberás empezar de nuevo.*`);
 
-    const key = `${message.chatId}-${message.from}`;
+    // Registrar la nueva solicitud del usuario
     solicitudesAudiosCategorias.set(key, { categorias });
 
+    // Borrar la solicitud después de 60 segundos
     setTimeout(() => {
         solicitudesAudiosCategorias.delete(key);
     }, 60000);
@@ -728,15 +838,16 @@ function manejarAudiosBot(message) {
 
 
 
+
 /**
  * Obtiene la lista de audios dentro de una categoría seleccionada.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `categoria` *(string)*: Nombre de la categoría seleccionada.
  * 
- * 🔹 **Salida:** *(Array de strings)* Lista de nombres de audios sin la extensión.
+ * **Salida:** *(Array de strings)* Lista de nombres de audios sin la extensión.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica la existencia del directorio de la categoría.
  * - Obtiene los nombres de los archivos dentro de la carpeta.
  * - Filtra solo los archivos con extensión `.mp3`, `.ogg` o `.wav` y elimina la extensión antes de retornarlos.
@@ -756,13 +867,13 @@ function listarAudiosPorCategoria(categoria) {
 /**
  * Maneja la selección de una categoría de audios por parte del usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  *   - `numero` *(number)*: Número enviado por el usuario para seleccionar una categoría de audio.
  * 
- * 🔹 **Salida:** No retorna valores, pero responde al usuario con la lista de audios en la categoría seleccionada.
+ * **Salida:** No retorna valores, pero responde al usuario con la lista de audios en la categoría seleccionada.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica si el usuario tiene una solicitud activa en `solicitudesAudiosCategorias`.
  * - Obtiene la categoría correspondiente según el número enviado.
  * - Llama a `listarAudiosPorCategoria()` para obtener los audios en la categoría seleccionada.
@@ -800,14 +911,14 @@ function manejarSeleccionCategoriaAudio(message, numero) {
 /**
  * Envía un audio desde una categoría específica al usuario en WhatsApp.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `audioFile` *(string)*: Nombre del archivo del audio (incluyendo su extensión).
  *   - `categoria` *(string)*: Nombre de la categoría en la que se encuentra el audio.
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp al cual se responderá con el audio.
  * 
- * 🔹 **Salida:** No retorna valores, pero envía un audio como respuesta al usuario.
+ * **Salida:** No retorna valores, pero envía un audio como respuesta al usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Construye la ruta del audio en `media/audios_categorias/{categoria}/`.
  * - Verifica si el archivo del audio existe antes de enviarlo.
  * - Convierte el audio en base64 y lo envía como `MessageMedia`.
@@ -817,7 +928,7 @@ function enviarAudioDesdeCategoria(audioFile, categoria, message) {
     const audioPath = path.join(__dirname, '..', 'media', 'audios_categorias', categoria, audioFile);
 
     if (!fs.existsSync(audioPath)) {
-        console.error(`❌ Audio no encontrado: ${audioPath}`);
+        console.error(`ERROR Audio no encontrado: ${audioPath}`);
         return message.reply(`No se encontró el audio: ${audioFile} en la categoría ${categoria}.`);
     }
 
@@ -839,13 +950,13 @@ function enviarAudioDesdeCategoria(audioFile, categoria, message) {
 /**
  * Maneja la selección de un audio dentro de una categoría por parte del usuario.
  * 
- * 🔹 **Entrada:** 
+ * **Entrada:** 
  *   - `message` *(object)*: Objeto del mensaje de WhatsApp recibido.
  *   - `numero` *(number)*: Número enviado por el usuario para seleccionar un audio.
  * 
- * 🔹 **Salida:** No retorna valores, pero envía el audio seleccionado al usuario.
+ * **Salida:** No retorna valores, pero envía el audio seleccionado al usuario.
  * 
- * 📌 **Descripción:**
+ * **Descripción:**
  * - Verifica si el usuario tiene una solicitud activa en `solicitudesAudiosPorCategoria`.
  * - Obtiene el audio correspondiente según el número enviado.
  * - Si el número es válido, llama a `enviarAudioDesdeCategoria()` para enviarlo.
@@ -863,10 +974,6 @@ function manejarSeleccionAudioPorCategoria(message, numero) {
     const audioSeleccionado = solicitud.audios[numero - 1] + '.mp3'; // Ajusta la extensión según el formato que estés usando.
     enviarAudioDesdeCategoria(audioSeleccionado, solicitud.categoria, message);
 }
-
-
-
-
 
 
 
